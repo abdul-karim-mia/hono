@@ -32,6 +32,11 @@ type MethodOverrideOptions = {
 
 const DEFAULT_METHOD_FORM_NAME = '_method'
 
+const isGetOrHead = (method: string): boolean => {
+  const upper = method.toUpperCase()
+  return upper === 'GET' || upper === 'HEAD'
+}
+
 /**
  * Method Override Middleware for Hono.
  *
@@ -75,16 +80,25 @@ export const methodOverride = (options: MethodOverrideOptions): MiddlewareHandle
         const form = await clonedRequest.formData()
         const method = form.get(methodFormName)
         if (method) {
-          const newForm = await newRequest.formData()
-          newForm.delete(methodFormName)
+          const methodStr = method as string
           const newHeaders = new Headers(clonedRequest.headers)
           newHeaders.delete('content-type')
           newHeaders.delete('content-length')
-          const request = new Request(c.req.url, {
-            body: newForm,
-            headers: newHeaders,
-            method: method as string,
-          })
+          let request: Request
+          if (isGetOrHead(methodStr)) {
+            request = new Request(c.req.url, {
+              headers: newHeaders,
+              method: methodStr,
+            })
+          } else {
+            const newForm = await newRequest.formData()
+            newForm.delete(methodFormName)
+            request = new Request(c.req.url, {
+              body: newForm,
+              headers: newHeaders,
+              method: methodStr,
+            })
+          }
           return app.fetch(request, c.env, getExecutionCtx(c))
         }
       }
@@ -93,6 +107,16 @@ export const methodOverride = (options: MethodOverrideOptions): MiddlewareHandle
         const params = await parseBody<Record<string, string>>(clonedRequest)
         const method = params[methodFormName]
         if (method) {
+          if (isGetOrHead(method)) {
+            const newHeaders = new Headers(clonedRequest.headers)
+            newHeaders.delete('content-type')
+            newHeaders.delete('content-length')
+            const request = new Request(c.req.url, {
+              headers: newHeaders,
+              method,
+            })
+            return app.fetch(request, c.env, getExecutionCtx(c))
+          }
           delete params[methodFormName]
           const newParams = new URLSearchParams(params)
           const request = new Request(newRequest, {
@@ -110,10 +134,20 @@ export const methodOverride = (options: MethodOverrideOptions): MiddlewareHandle
       if (method) {
         const newHeaders = new Headers(c.req.raw.headers)
         newHeaders.delete(headerName)
-        const request = new Request(c.req.raw, {
-          headers: newHeaders,
-          method,
-        })
+        let request: Request
+        if (isGetOrHead(method)) {
+          newHeaders.delete('content-type')
+          newHeaders.delete('content-length')
+          request = new Request(c.req.url, {
+            headers: newHeaders,
+            method,
+          })
+        } else {
+          request = new Request(c.req.raw, {
+            headers: newHeaders,
+            method,
+          })
+        }
         return app.fetch(request, c.env, getExecutionCtx(c))
       }
     }
@@ -124,11 +158,17 @@ export const methodOverride = (options: MethodOverrideOptions): MiddlewareHandle
       if (method) {
         const url = new URL(c.req.url)
         url.searchParams.delete(queryName)
+        const isGetHead = isGetOrHead(method)
+        const headers = new Headers(c.req.raw.headers)
+        if (isGetHead) {
+          headers.delete('content-type')
+          headers.delete('content-length')
+        }
         const requestInit: RequestInit & { duplex?: 'half' } = {
-          body: c.req.raw.body,
-          headers: c.req.raw.headers,
+          body: isGetHead ? null : c.req.raw.body,
+          headers,
           method,
-          duplex: c.req.raw.body ? 'half' : undefined,
+          duplex: !isGetHead && c.req.raw.body ? 'half' : undefined,
         }
         const request = new Request(url.toString(), requestInit)
         return app.fetch(request, c.env, getExecutionCtx(c))
