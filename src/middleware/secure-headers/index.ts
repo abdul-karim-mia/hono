@@ -1,4 +1,4 @@
-export type { ContentSecurityPolicyOptionHandler } from './secure-headers'
+export type { ContentSecurityPolicyOptionHandler, SecureHeadersOptions } from './secure-headers'
 export { NONCE, secureHeaders } from './secure-headers'
 import type { SecureHeadersVariables } from './secure-headers'
 export type { SecureHeadersVariables }

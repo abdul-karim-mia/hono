@@ -668,4 +668,60 @@ describe('Secure Headers Middleware', () => {
       expect(header.includes('report-uri')).toBe(false)
     })
   })
+
+  describe('overwrite option', () => {
+    it('overwrites pre-existing headers by default', async () => {
+      const app = new Hono()
+      app.use('*', secureHeaders())
+      app.get('/test', (ctx) => {
+        ctx.header('X-Frame-Options', 'DENY')
+        return ctx.text('test')
+      })
+
+      const res = await app.request('/test')
+      expect(res.status).toBe(200)
+      expect(res.headers.get('X-Frame-Options')).toEqual('SAMEORIGIN')
+    })
+
+    it('keeps pre-existing headers when overwrite is false', async () => {
+      const app = new Hono()
+      app.use(
+        '*',
+        secureHeaders({
+          overwrite: false,
+          contentSecurityPolicy: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'"],
+          },
+        })
+      )
+      app.get('/custom', (ctx) => {
+        ctx.header('X-Frame-Options', 'DENY')
+        ctx.header('Content-Security-Policy', "default-src 'none'")
+        return ctx.text('custom')
+      })
+      app.get('/default', (ctx) => {
+        return ctx.text('default')
+      })
+
+      // Route with custom headers set by handler
+      const resCustom = await app.request('/custom')
+      expect(resCustom.status).toBe(200)
+      expect(resCustom.headers.get('X-Frame-Options')).toEqual('DENY')
+      expect(resCustom.headers.get('Content-Security-Policy')).toEqual("default-src 'none'")
+      // Other secure headers not set by handler are still applied
+      expect(resCustom.headers.get('X-Content-Type-Options')).toEqual('nosniff')
+      expect(resCustom.headers.get('Strict-Transport-Security')).toEqual(
+        'max-age=15552000; includeSubDomains'
+      )
+
+      // Route without custom headers gets default secure headers
+      const resDefault = await app.request('/default')
+      expect(resDefault.status).toBe(200)
+      expect(resDefault.headers.get('X-Frame-Options')).toEqual('SAMEORIGIN')
+      expect(resDefault.headers.get('Content-Security-Policy')).toEqual(
+        "default-src 'self'; script-src 'self'"
+      )
+    })
+  })
 })
