@@ -2308,3 +2308,34 @@ describe('PickResponseByStatusCode Type Helper', () => {
     type verify = Expect<Equal<ResponseType, Expected>>
   })
 })
+
+describe('Client init.signal merging', () => {
+  it('Should preserve AbortSignal when both default and per-request init.signal are provided', async () => {
+    let capturedSignal: AbortSignal | undefined
+
+    const app = new Hono().get('/test', (c) => c.text('ok'))
+    const sessionController = new AbortController()
+    const requestController = new AbortController()
+
+    const client = hc<typeof app>('http://localhost', {
+      init: {
+        signal: sessionController.signal,
+      },
+      fetch: async (url: string | URL | Request, init?: RequestInit) => {
+        capturedSignal = init?.signal as AbortSignal
+        new Request(url, init)
+        return app.request(url, init)
+      },
+    })
+
+    const res = await client.test.$get(undefined, {
+      init: {
+        signal: requestController.signal,
+      },
+    })
+
+    expect(await res.text()).toBe('ok')
+    expect(capturedSignal).toBe(requestController.signal)
+    expect(capturedSignal instanceof AbortSignal).toBe(true)
+  })
+})

@@ -208,6 +208,31 @@ describe('deepMerge', () => {
       timeout: 2,
     })
   })
+
+  it('should preserve class instances like AbortSignal and not spread them into plain objects', () => {
+    const controller1 = new AbortController()
+    const controller2 = new AbortController()
+
+    const merged = deepMerge(
+      { init: { signal: controller1.signal, timeout: 1000 } },
+      { init: { signal: controller2.signal } }
+    )
+
+    expect(merged.init.signal).toBe(controller2.signal)
+    expect(merged.init.signal instanceof AbortSignal).toBe(true)
+    expect(merged.init.timeout).toBe(1000)
+  })
+
+  it('should support objects created with Object.create(null)', () => {
+    const target = Object.create(null)
+    target.a = 1
+    const source = Object.create(null)
+    source.b = 2
+
+    const merged = deepMerge({ config: target }, { config: source })
+    expect(merged.config.a).toBe(1)
+    expect(merged.config.b).toBe(2)
+  })
 })
 
 describe('parseResponse', async () => {
